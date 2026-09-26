@@ -21,4 +21,13 @@ const queued = listPayouts(db, { status: "queued", limit: 500 });
 for (const p of queued.slice(Math.floor(queued.length / 2))) {
   settlePayout(db, p.id, { ok: true, ref: `demo-${p.id}` });
 }
+// Spread claims (and their payouts) over the last 14 days so the daily chart has history.
+const DAY = 86_400_000;
+const rows = db.prepare("SELECT id FROM claims ORDER BY id").all() as { id: number }[];
+rows.forEach((r, i) => {
+  const daysAgo = 13 - Math.floor((i / rows.length) * 14);
+  db.prepare("UPDATE claims SET created_at = ? WHERE id = ?").run(Date.now() - daysAgo * DAY - (i % 7) * 3_600_000, r.id);
+});
+db.exec("UPDATE payouts SET created_at = created_at - MAX(0, 13 - id / 3) * 86400000");
+
 console.log("seeded", db.prepare("SELECT COUNT(*) AS n FROM claims").get());

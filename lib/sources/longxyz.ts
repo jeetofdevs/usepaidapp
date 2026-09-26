@@ -24,6 +24,8 @@ export type LongXyzConfig = {
   launchEvent: string;
   claimableFn: string;
   claimFn: string;
+  /** Optional: function on the token contract that returns its metadata URI. */
+  tokenUriFn?: string;
   fromBlock: bigint;
   feeAssetDecimals: number;
   feeAssetUsd: number;
@@ -124,6 +126,42 @@ export class LongXyzFeeSource implements FeeSource {
       handle,
       creator: typeof args.creator === "string" ? args.creator : null,
       launchedAt: Number(block.timestamp) * 1000,
+    };
+  }
+
+  async inspect(tokenAddress: string) {
+    const token = getAddress(tokenAddress);
+    const [name, symbol] = await Promise.all([
+      this.pub.readContract({ address: token, abi: ERC20_ABI, functionName: "name" }).catch(() => null),
+      this.pub.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => null),
+    ]);
+    let pending: bigint | null = null;
+    try {
+      pending = await this.readClaimable(token);
+    } catch {
+      pending = null;
+    }
+    let handle: string | null = null;
+    if (this.cfg.tokenUriFn) {
+      try {
+        const uri = (await this.pub.readContract({
+          address: token,
+          abi: parseAbi([this.cfg.tokenUriFn]),
+          functionName: this.fn(this.cfg.tokenUriFn),
+        } as never)) as string;
+        handle = handleFromMetadata(await fetchMetadata(uri));
+      } catch {
+        handle = null;
+      }
+    }
+    return {
+      exists: name !== null || symbol !== null,
+      name: name === null ? null : String(name),
+      symbol: symbol === null ? null : String(symbol),
+      handle,
+      routesToTreasury: pending !== null,
+      pendingMicros:
+        pending === null ? null : tokenAmountToMicros(pending, this.cfg.feeAssetDecimals, this.cfg.feeAssetUsd),
     };
   }
 

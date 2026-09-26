@@ -58,7 +58,8 @@ export default function Docs() {
       <h2 id="opt-out">Opting out</h2>
       <p>
         Anyone can put any handle in token metadata, so account owners can opt out. After that, no money is credited to them:
-        fees from tokens naming their handle are burned in full. Contact the operator from the account to opt out.
+        fees from tokens naming their handle are burned in full. To opt out, sign in with X on the{" "}
+        <a href="/account">account page</a>.
       </p>
 
       <h2 id="api">API</h2>

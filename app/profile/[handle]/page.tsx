@@ -2,9 +2,11 @@ import { notFound } from "next/navigation";
 import { config } from "@/lib/config.ts";
 import { normalizeHandle } from "@/lib/handle.ts";
 import { formatUsd } from "@/lib/money.ts";
-import { getAccount, listPayouts, listTokens, recentClaims } from "@/lib/queries.ts";
+import { earningsByToken, getAccount, listPayouts, recentClaims } from "@/lib/queries.ts";
 import { db } from "@/lib/server.ts";
-import { ClaimsTable, PayoutsTable, TokensTable } from "@/components/Tables.tsx";
+import Link from "next/link";
+import { ClaimsTable, PayoutsTable, shortAddr } from "@/components/Tables.tsx";
+import { Avatar } from "@/components/Avatar.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +16,13 @@ export default async function Profile({ params }: { params: Promise<{ handle: st
 
   const d = db();
   const account = getAccount(d, handle);
-  const tokens = listTokens(d, { handle, limit: 200 });
+  const earnings = earningsByToken(d, handle);
   const toMilestone = Math.max(0, config.payoutMilestoneUsd * 1_000_000 - (account?.balance_micros ?? 0));
 
   return (
     <>
       <div className="profile-head">
-        <div className="avatar">{handle[0].toUpperCase()}</div>
+        <Avatar handle={handle} />
         <div>
           <h1>@{handle}</h1>
           <a className="muted" href={`https://x.com/${handle}`} target="_blank" rel="noreferrer">
@@ -60,8 +62,37 @@ export default async function Profile({ params }: { params: Promise<{ handle: st
       )}
 
       <section>
-        <h2>Tokens</h2>
-        <TokensTable rows={tokens} showHandle={false} />
+        <h2>Earnings by token</h2>
+        {earnings.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Token</th>
+                  <th>Address</th>
+                  <th className="num">Claims</th>
+                  <th className="num">Earned</th>
+                </tr>
+              </thead>
+              <tbody>
+                {earnings.map((t) => (
+                  <tr key={t.address}>
+                    <td>
+                      <Link href={`/token/${t.address}`}>
+                        <strong>${t.symbol}</strong> <span className="muted">{t.name}</span>
+                      </Link>
+                    </td>
+                    <td className="mono muted">{shortAddr(t.address)}</td>
+                    <td className="num">{t.claims}</td>
+                    <td className="num">{formatUsd(t.earned)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty">No tokens yet.</div>
+        )}
       </section>
       <section>
         <h2>Payouts</h2>

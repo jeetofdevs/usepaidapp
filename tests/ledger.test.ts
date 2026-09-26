@@ -72,3 +72,26 @@ test("claim cycle discovers tokens once and keeps the ledger balanced", async ()
   assert.equal(row.recipient + row.burn, row.claimed);
   assert.equal(row.balances + row.payouts, row.recipient);
 });
+
+test("dailyFees buckets claims by UTC day and fills empty days", async () => {
+  const { dailyFees, earningsByToken } = await import("../lib/queries.ts");
+  const db = openDb(":memory:");
+  upsertToken(db, token);
+  const now = Date.UTC(2026, 8, 26, 12);
+  recordClaim(db, opts, "0xabc", 2_000_000, null);
+  recordClaim(db, opts, "0xabc", 3_000_000, null);
+  db.prepare("UPDATE claims SET created_at = ? WHERE id = 1").run(Date.UTC(2026, 8, 24, 23));
+  db.prepare("UPDATE claims SET created_at = ? WHERE id = 2").run(Date.UTC(2026, 8, 26, 1));
+
+  const days = dailyFees(db, 4, now);
+  assert.deepEqual(days, [
+    { day: "2026-09-23", micros: 0 },
+    { day: "2026-09-24", micros: 2_000_000 },
+    { day: "2026-09-25", micros: 0 },
+    { day: "2026-09-26", micros: 3_000_000 },
+  ]);
+  assert.deepEqual(
+    earningsByToken(db, "alice").map((t) => [t.claims, t.earned]),
+    [[2, 4_000_000]],
+  );
+});

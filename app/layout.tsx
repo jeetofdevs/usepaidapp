@@ -19,8 +19,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="dot" /> {config.appName}
             </Link>
             <nav className="links">
+              <Link href="/launch">Launch</Link>
+              <Link href="/check">Check</Link>
               <Link href="/leaderboard">Leaderboard</Link>
               <Link href="/docs">Docs</Link>
+              <Link href="/account">Account</Link>
             </nav>
           </div>
         </header>

@@ -28,8 +28,11 @@ npm test
 
 | Route | What it shows |
 | --- | --- |
-| `/` | Totals, how it works, recent claims, top tokens, lookup by handle or token address |
-| `/profile/:handle` | Earnings, balance, distance to next payout, tokens, payouts, claims |
+| `/` | Live totals (refresh every 15s), fees-per-day chart, how it works, recent claims, top tokens, lookup |
+| `/launch` | Step-by-step launch guide: copy the treasury address, build the metadata for a handle |
+| `/check` | Eligibility checker: is this token set up, does it have a handle, has it been picked up |
+| `/account` | Sign in with X to see your earnings and opt out (or back in) yourself |
+| `/profile/:handle` | X profile picture, earnings by token, balance, distance to next payout, payouts, claims |
 | `/token/:address` | A token's fees, split, and claim history |
 | `/leaderboard` | Top accounts and tokens |
 | `/docs` | Launch format, fee split, payouts, opt-out, API |
@@ -69,4 +72,8 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-host/api/cron/
    `POST /api/admin/payouts`. To automate this, implement `PayoutProvider` for your payment rail.
 4. **Buyback and burn.** Burns are recorded as `pending` in the `burns` table. The swap and burn transaction isn't
    automated yet.
-5. **Secrets.** Keep `TREASURY_PRIVATE_KEY` in a secrets manager and set a long random `CRON_SECRET`.
+5. **Sign in with X.** Create an OAuth 2.0 app at developer.x.com, set its callback to `$APP_URL/auth/x/callback`,
+   and fill in `X_CLIENT_ID`, `X_CLIENT_SECRET` and `SESSION_SECRET`. Without them, `/account` explains that sign-in
+   isn't set up. The sign-in flow hasn't been tested against X yet.
+6. **Metadata lookups in `/check`.** Set `LONG_TOKEN_URI_FN` to the function long.xyz tokens use for their metadata URI.
+7. **Secrets.** Keep `TREASURY_PRIVATE_KEY` in a secrets manager and set a long random `CRON_SECRET`.

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { config } from "@/lib/config.ts";
 import { formatUsd } from "@/lib/money.ts";
-import { getStats, listTokens, recentClaims } from "@/lib/queries.ts";
+import { dailyFees, getStats, listTokens, recentClaims } from "@/lib/queries.ts";
 import { db } from "@/lib/server.ts";
 import { ClaimsTable, TokensTable } from "@/components/Tables.tsx";
 import { Lookup } from "@/components/Lookup.tsx";
+import { LiveStats } from "@/components/LiveStats.tsx";
+import { FeesChart } from "@/components/FeesChart.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -24,26 +26,18 @@ export default function Home() {
           on-chain and pay {share}% of them out to that account in dollars. The other {100 - share}% buys back and burns.
         </p>
         <Lookup />
+        <div className="hero-actions">
+          <Link href="/launch">Launch a token →</Link>
+          <Link href="/check">Check a token →</Link>
+        </div>
       </div>
 
-      <div className="stats">
-        <div className="stat">
-          <div className="label">Fees claimed</div>
-          <div className="value">{formatUsd(stats.claimedMicros)}</div>
-        </div>
-        <div className="stat">
-          <div className="label">Paid to X accounts</div>
-          <div className="value">{formatUsd(stats.paidMicros)}</div>
-        </div>
-        <div className="stat">
-          <div className="label">Bought back and burned</div>
-          <div className="value">{formatUsd(stats.burnedMicros)}</div>
-        </div>
-        <div className="stat">
-          <div className="label">Tokens routing fees</div>
-          <div className="value">{stats.tokens}</div>
-        </div>
-      </div>
+      <LiveStats initial={stats} />
+
+      <section>
+        <h2>Fees claimed, last 14 days</h2>
+        <FeesChart data={dailyFees(d, 14)} />
+      </section>
 
       <section>
         <h2>How it works</h2>
@@ -53,7 +47,7 @@ export default function Home() {
             <h3>Launch on long.xyz</h3>
             <p>
               Set the creator-fee beneficiary to the {config.appName} treasury and put an X handle in the token metadata.{" "}
-              <Link href="/docs#launch">See the format.</Link>
+              <Link href="/launch">Launch guide.</Link>
             </p>
           </div>
           <div className="step">

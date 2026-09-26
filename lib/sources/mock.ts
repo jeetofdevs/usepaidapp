@@ -20,6 +20,12 @@ export class MockFeeSource implements FeeSource {
     return { tokens: this.tokens.slice(from), cursor: String(this.tokens.length) };
   }
 
+  async inspect(tokenAddress: string) {
+    const t = this.tokens.find((x) => x.address.toLowerCase() === tokenAddress.toLowerCase());
+    if (!t) return { exists: false, name: null, symbol: null, handle: null, routesToTreasury: false, pendingMicros: null };
+    return { exists: true, name: t.name, symbol: t.symbol, handle: t.handle, routesToTreasury: true, pendingMicros: 12_340_000 };
+  }
+
   async claim(_tokenAddress: string) {
     // Between $0 and $40 per cycle.
     const amountMicros = Math.floor(this.rng() * 40_000_000);

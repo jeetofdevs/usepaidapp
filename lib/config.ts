@@ -14,6 +14,10 @@ export const config = {
   payoutMilestoneUsd: num("PAYOUT_MILESTONE_USD", 10),
   feeSource: (process.env.FEE_SOURCE || "mock") as "mock" | "longxyz",
   payoutProvider: (process.env.PAYOUT_PROVIDER || "manual") as "manual",
+  appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
+  sessionSecret: process.env.SESSION_SECRET || "",
+  xClientId: process.env.X_CLIENT_ID || "",
+  xClientSecret: process.env.X_CLIENT_SECRET || "",
   long: {
     rpcUrl: process.env.LONG_RPC_URL || "",
     chainId: num("LONG_CHAIN_ID", 0),
@@ -23,6 +27,7 @@ export const config = {
     launchEvent: process.env.LONG_LAUNCH_EVENT || "",
     claimableFn: process.env.LONG_CLAIMABLE_FN || "",
     claimFn: process.env.LONG_CLAIM_FN || "",
+    tokenUriFn: process.env.LONG_TOKEN_URI_FN || "",
     fromBlock: BigInt(process.env.LONG_FROM_BLOCK || "0"),
     feeAssetDecimals: num("LONG_FEE_ASSET_DECIMALS", 18),
     feeAssetUsd: num("LONG_FEE_ASSET_USD", 1),

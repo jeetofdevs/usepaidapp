@@ -136,3 +136,33 @@ export function listPayouts(db: Db, opts: { handle?: string; status?: PayoutRow[
     .prepare(`SELECT * FROM payouts ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC LIMIT ?`)
     .all(...args) as PayoutRow[];
 }
+
+const DAY_MS = 86_400_000;
+
+/** Fees claimed per UTC day for the last `days` days, oldest first, with empty days filled in. */
+export function dailyFees(db: Db, days = 14, now = Date.now()): { day: string; micros: number }[] {
+  const end = Math.floor(now / DAY_MS) * DAY_MS;
+  const start = end - (days - 1) * DAY_MS;
+  const rows = db
+    .prepare(
+      `SELECT (created_at / ${DAY_MS}) * ${DAY_MS} AS d, SUM(amount_micros) AS micros
+       FROM claims WHERE created_at >= ? GROUP BY d`,
+    )
+    .all(start) as { d: number; micros: number }[];
+  const byDay = new Map(rows.map((r) => [r.d, r.micros]));
+  return Array.from({ length: days }, (_, i) => {
+    const d = start + i * DAY_MS;
+    return { day: new Date(d).toISOString().slice(0, 10), micros: byDay.get(d) ?? 0 };
+  });
+}
+
+/** What an account earned from each of its tokens. */
+export function earningsByToken(db: Db, handle: string) {
+  return db
+    .prepare(
+      `SELECT t.address, t.symbol, t.name, COUNT(c.id) AS claims, COALESCE(SUM(c.recipient_micros),0) AS earned
+       FROM tokens t LEFT JOIN claims c ON c.token = t.address AND c.handle = t.handle
+       WHERE t.handle = ? GROUP BY t.address ORDER BY earned DESC`,
+    )
+    .all(handle) as { address: string; symbol: string; name: string; claims: number; earned: number }[];
+}
