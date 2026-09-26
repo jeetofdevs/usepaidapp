@@ -1,3 +1,5 @@
+import { parseMilestones } from "./milestones.ts";
+
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -11,9 +13,11 @@ export const config = {
   databasePath: process.env.DATABASE_PATH || "./data/feeroute.db",
   cronSecret: process.env.CRON_SECRET || "",
   recipientShareBps: num("RECIPIENT_SHARE_BPS", 8000),
-  payoutMilestoneUsd: num("PAYOUT_MILESTONE_USD", 10),
+  milestones: parseMilestones(process.env.PAYOUT_MILESTONES_USD, process.env.PAYOUT_MILESTONE_STEP_USD),
   feeSource: (process.env.FEE_SOURCE || "mock") as "mock" | "longxyz",
-  payoutProvider: (process.env.PAYOUT_PROVIDER || "manual") as "manual",
+  payoutProvider: (process.env.PAYOUT_PROVIDER || "manual") as "manual" | "webhook",
+  payoutWebhookUrl: process.env.PAYOUT_WEBHOOK_URL || "",
+  payoutWebhookSecret: process.env.PAYOUT_WEBHOOK_SECRET || "",
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
   sessionSecret: process.env.SESSION_SECRET || "",
   xClientId: process.env.X_CLIENT_ID || "",

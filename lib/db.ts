@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   lifetime_micros  INTEGER NOT NULL DEFAULT 0,
   paid_micros      INTEGER NOT NULL DEFAULT 0,
   opted_out        INTEGER NOT NULL DEFAULT 0,
+  -- Highest payout milestone already crossed (micro-dollars of lifetime earnings).
+  milestone_micros INTEGER NOT NULL DEFAULT 0,
   created_at       INTEGER NOT NULL
 );
 
@@ -66,7 +68,15 @@ export function openDb(path: string): Db {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+function migrate(db: Db) {
+  const cols = db.prepare("PRAGMA table_info(accounts)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "milestone_micros")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN milestone_micros INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function tx<T>(db: Db, fn: () => T): T {

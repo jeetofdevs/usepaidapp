@@ -65,6 +65,7 @@ export type AccountRow = {
   lifetime_micros: number;
   paid_micros: number;
   opted_out: number;
+  milestone_micros: number;
   created_at: number;
 };
 

@@ -1,5 +1,5 @@
 import { config } from "@/lib/config.ts";
-import { formatUsd } from "@/lib/money.ts";
+import { describeMilestones } from "@/lib/milestones.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -48,11 +48,22 @@ export default function Docs() {
         </li>
       </ul>
 
+      <h2 id="flow">Where the money goes</h2>
+      <ol>
+        <li>The token trades on long.xyz. Creator fees build up for our treasury.</li>
+        <li>On a schedule, the claimer claims each token's fees on-chain. Claiming on every trade would cost more in gas than quiet tokens earn.</li>
+        <li>
+          Each claim is split: {share}% is credited to the X account in the token's metadata, {100 - share}% buys back and burns.
+        </li>
+        <li>When the account crosses a milestone, its balance is sent in dollars to that X account.</li>
+      </ol>
+
       <h2 id="payouts">Payouts</h2>
       <p>
-        When an account's balance reaches {formatUsd(config.payoutMilestoneUsd * 1_000_000)}, the whole balance is queued as a
-        payout in dollars. If a payout fails (for example, the account can't receive money yet), the amount goes back to the
-        balance and is retried at the next milestone.
+        An account's share builds up as fees are claimed. Each time its lifetime earnings cross a milestone (
+        {describeMilestones(config.milestones)}), the full unpaid balance is paid out in dollars. If a payout fails (for
+        example, the account can't receive money yet), the amount goes back to the balance and goes out with the next
+        milestone.
       </p>
 
       <h2 id="opt-out">Opting out</h2>

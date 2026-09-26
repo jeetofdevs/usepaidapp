@@ -7,8 +7,9 @@ import { runClaimCycle } from "../lib/claimer.ts";
 import { MockFeeSource } from "../lib/sources/mock.ts";
 import { ManualPayoutProvider } from "../lib/payouts/manual.ts";
 import { DEMO_TOKENS } from "../lib/demo.ts";
+import { parseMilestones } from "../lib/milestones.ts";
 
-const opts = { recipientShareBps: 8000, payoutMilestoneMicros: 10_000_000 };
+const opts = { recipientShareBps: 8000, milestones: parseMilestones(undefined, undefined) };
 const token = { address: "0xABC", chainId: 1, name: "T", symbol: "T", handle: "alice", launchedAt: 0 };
 
 test("claims credit the account and queue a payout at the milestone", () => {

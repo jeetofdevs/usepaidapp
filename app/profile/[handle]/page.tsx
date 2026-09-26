@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { config } from "@/lib/config.ts";
 import { normalizeHandle } from "@/lib/handle.ts";
 import { formatUsd } from "@/lib/money.ts";
+import { nextMilestone } from "@/lib/milestones.ts";
 import { earningsByToken, getAccount, listPayouts, recentClaims } from "@/lib/queries.ts";
 import { db } from "@/lib/server.ts";
 import Link from "next/link";
@@ -17,7 +18,8 @@ export default async function Profile({ params }: { params: Promise<{ handle: st
   const d = db();
   const account = getAccount(d, handle);
   const earnings = earningsByToken(d, handle);
-  const toMilestone = Math.max(0, config.payoutMilestoneUsd * 1_000_000 - (account?.balance_micros ?? 0));
+  const next = nextMilestone(account?.milestone_micros ?? 0, config.milestones);
+  const toMilestone = Math.max(0, next - (account?.lifetime_micros ?? 0));
 
   return (
     <>
@@ -51,6 +53,7 @@ export default async function Profile({ params }: { params: Promise<{ handle: st
         <div className="stat">
           <div className="label">Until next payout</div>
           <div className="value">{formatUsd(toMilestone)}</div>
+          <div className="sub">at {formatUsd(next)} earned</div>
         </div>
       </div>
 

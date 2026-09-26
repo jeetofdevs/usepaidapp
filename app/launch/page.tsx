@@ -42,8 +42,8 @@ export default function Launch() {
           <h3>Launch, then check it</h3>
           <p>
             After launch, paste the token address into the <Link href="/check">eligibility checker</Link>. Once it's picked
-            up, {share}% of its creator fees go to the account and payouts start at{" "}
-            {formatUsd(config.payoutMilestoneUsd * 1_000_000)}.
+            up, {share}% of its creator fees go to the account. The first payout goes out once the account has earned{" "}
+            {formatUsd(config.milestones.list[0])}.
           </p>
         </li>
       </ol>

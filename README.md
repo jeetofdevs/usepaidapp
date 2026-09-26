@@ -3,8 +3,9 @@
 Route the creator fees of [long.xyz](https://long.xyz) tokens to any X account, paid in dollars.
 
 A token launched on long.xyz names the Feeroute treasury as its creator-fee beneficiary and puts an X handle in its
-metadata. Feeroute claims the fees on-chain, credits **80%** to that X account and uses **20%** to buy back and burn.
-When an account's balance reaches the payout milestone ($10 by default), the balance is queued as a payout.
+metadata. Feeroute claims the fees on-chain on a schedule, credits **80%** to that X account and uses **20%** to buy
+back and burn. Each time an account's lifetime earnings cross a milestone ($5, $10, $20, $50, $100, $250, $500, $1,000,
+then every $1,000), its full unpaid balance is paid out in dollars.
 
 Feeroute is an independent project. It is not affiliated with long.xyz, X, or UsePaid.
 
@@ -68,8 +69,14 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-host/api/cron/
    placeholders. Replace them with the contracts long.xyz has actually deployed, and test against a fork first.
 2. **Price the fee asset.** `LONG_FEE_ASSET_USD` is a fixed price. If fees are paid in a stock token or ETH, swap in a
    live price oracle.
-3. **Payouts.** `ManualPayoutProvider` only queues payouts. An operator sends them and marks each one with
-   `POST /api/admin/payouts`. To automate this, implement `PayoutProvider` for your payment rail.
+3. **Payouts.** There's no public X Money API to call directly, so payouts go through one of two providers:
+   - `PAYOUT_PROVIDER=manual`: payouts stay queued. An operator sends them and marks each one with
+     `POST /api/admin/payouts`.
+   - `PAYOUT_PROVIDER=webhook`: each payout is POSTed to `PAYOUT_WEBHOOK_URL`, signed with HMAC-SHA256 using
+     `PAYOUT_WEBHOOK_SECRET` (see `lib/payouts/webhook.ts` for the exact contract). Your service pays the X account and
+     replies `{"status":"sent","ref":…}` or `{"status":"failed","reason":…}`. It must dedupe on `idempotencyKey`,
+     because a payout is retried if the service returns 5xx or times out.
+   A failed payout returns the money to the balance, and it goes out with the next milestone.
 4. **Buyback and burn.** Burns are recorded as `pending` in the `burns` table. The swap and burn transaction isn't
    automated yet.
 5. **Sign in with X.** Create an OAuth 2.0 app at developer.x.com, set its callback to `$APP_URL/auth/x/callback`,

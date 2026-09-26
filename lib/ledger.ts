@@ -1,5 +1,6 @@
 import { type Db, tx } from "./db.ts";
 import { splitClaim } from "./money.ts";
+import { highestReached, type Milestones, nextMilestone } from "./milestones.ts";
 
 export type TokenRecord = {
   address: string;
@@ -12,7 +13,7 @@ export type TokenRecord = {
   launchedAt: number;
 };
 
-export type LedgerOptions = { recipientShareBps: number; payoutMilestoneMicros: number };
+export type LedgerOptions = { recipientShareBps: number; milestones: Milestones };
 
 export function upsertToken(db: Db, t: TokenRecord) {
   db.prepare(
@@ -30,7 +31,7 @@ function ensureAccount(db: Db, handle: string) {
 
 /**
  * Records fees claimed for a token: splits them between the X account and the burn,
- * credits the account, and queues a payout once the balance reaches the milestone.
+ * credits the account, and queues a payout when lifetime earnings cross a milestone.
  * Returns the queued payout id, if any.
  */
 export function recordClaim(
@@ -69,14 +70,19 @@ export function recordClaim(
       db.prepare("INSERT INTO burns (amount_micros, status, created_at) VALUES (?, 'pending', ?)").run(burn, now);
     }
 
-    const payoutId = maybeQueuePayout(db, token.handle, opts.payoutMilestoneMicros);
+    const payoutId = maybeQueuePayout(db, token.handle, opts.milestones);
     return { claimId: Number(claim.lastInsertRowid), payoutId };
   });
 }
 
-function maybeQueuePayout(db: Db, handle: string, milestoneMicros: number): number | null {
-  const acc = db.prepare("SELECT balance_micros FROM accounts WHERE handle = ?").get(handle) as { balance_micros: number };
-  if (acc.balance_micros < milestoneMicros || acc.balance_micros <= 0) return null;
+function maybeQueuePayout(db: Db, handle: string, milestones: Milestones): number | null {
+  const acc = db
+    .prepare("SELECT balance_micros, lifetime_micros, milestone_micros FROM accounts WHERE handle = ?")
+    .get(handle) as { balance_micros: number; lifetime_micros: number; milestone_micros: number };
+  if (acc.lifetime_micros < nextMilestone(acc.milestone_micros, milestones)) return null;
+  // One claim can cross several milestones; record the highest so each is only paid once.
+  db.prepare("UPDATE accounts SET milestone_micros = ? WHERE handle = ?").run(highestReached(acc.lifetime_micros, milestones), handle);
+  if (acc.balance_micros <= 0) return null;
   // Move the whole balance into the payout so it can't be paid twice.
   db.prepare("UPDATE accounts SET balance_micros = 0 WHERE handle = ?").run(handle);
   const r = db
@@ -96,7 +102,7 @@ export function settlePayout(db: Db, id: number, result: { ok: true; ref: string
       db.prepare("UPDATE payouts SET status = 'paid', provider_ref = ?, settled_at = ? WHERE id = ?").run(result.ref, Date.now(), id);
       db.prepare("UPDATE accounts SET paid_micros = paid_micros + ? WHERE handle = ?").run(p.amount_micros, p.handle);
     } else {
-      // Return the money to the balance so the next milestone retries it.
+      // Return the money to the balance; it goes out with the next milestone payout.
       db.prepare("UPDATE payouts SET status = 'failed', provider_ref = ?, settled_at = ? WHERE id = ?").run(result.reason, Date.now(), id);
       db.prepare("UPDATE accounts SET balance_micros = balance_micros + ? WHERE handle = ?").run(p.amount_micros, p.handle);
     }

@@ -177,3 +177,4 @@ li.check .muted { font-size: 14px; }
   header.site .wrap { flex-wrap: wrap; height: auto; padding-top: 12px; padding-bottom: 10px; row-gap: 8px; }
   nav.links { width: 100%; justify-content: space-between; }
 }
+.stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }

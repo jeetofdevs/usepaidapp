@@ -59,8 +59,8 @@ export default function Home() {
             <div className="n">03</div>
             <h3>Paid in dollars</h3>
             <p>
-              Once the balance reaches {formatUsd(config.payoutMilestoneUsd * 1_000_000)}, it is paid out to the account. No wallet
-              or sign-up needed.
+              The first payout goes out at {formatUsd(config.milestones.list[0])} earned, then at every milestone after that.
+              Each one sends the full balance. No wallet or sign-up needed.
             </p>
           </div>
         </div>

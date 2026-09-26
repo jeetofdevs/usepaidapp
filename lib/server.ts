@@ -2,11 +2,11 @@ import "server-only";
 import { config } from "./config.ts";
 import { type Db, openDb } from "./db.ts";
 import type { LedgerOptions } from "./ledger.ts";
-import { usdToMicros } from "./money.ts";
 import { MockFeeSource } from "./sources/mock.ts";
 import { LongXyzFeeSource } from "./sources/longxyz.ts";
 import type { FeeSource } from "./sources/types.ts";
 import { ManualPayoutProvider } from "./payouts/manual.ts";
+import { WebhookPayoutProvider } from "./payouts/webhook.ts";
 import type { PayoutProvider } from "./payouts/types.ts";
 import { DEMO_TOKENS } from "./demo.ts";
 
@@ -18,7 +18,7 @@ export function db(): Db {
 }
 
 export function ledgerOptions(): LedgerOptions {
-  return { recipientShareBps: config.recipientShareBps, payoutMilestoneMicros: usdToMicros(config.payoutMilestoneUsd) };
+  return { recipientShareBps: config.recipientShareBps, milestones: config.milestones };
 }
 
 export function feeSource(): FeeSource {
@@ -27,6 +27,9 @@ export function feeSource(): FeeSource {
 }
 
 export function payoutProvider(): PayoutProvider {
+  if (config.payoutProvider === "webhook") {
+    return new WebhookPayoutProvider(config.payoutWebhookUrl, config.payoutWebhookSecret);
+  }
   return new ManualPayoutProvider();
 }
 
