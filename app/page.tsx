@@ -16,7 +16,9 @@ export default function Home() {
   return (
     <>
       <div className="hero">
-        <h1>Send long.xyz token fees to any X account.</h1>
+        <h1>
+          Send long.xyz token fees to <span className="hl">any X account.</span>
+        </h1>
         <p className="lede">
           Launch a token on long.xyz with {config.appName} as its fee beneficiary and name an X handle. We claim the creator fees
           on-chain and pay {share}% of them out to that account in dollars. The other {100 - share}% buys back and burns.
