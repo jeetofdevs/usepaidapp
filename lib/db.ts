@@ -1,0 +1,91 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS tokens (
+  address      TEXT PRIMARY KEY,
+  chain_id     INTEGER NOT NULL,
+  name         TEXT NOT NULL,
+  symbol       TEXT NOT NULL,
+  image        TEXT,
+  handle       TEXT NOT NULL,
+  creator      TEXT,
+  launched_at  INTEGER NOT NULL,
+  fees_micros  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS tokens_handle ON tokens(handle);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  handle           TEXT PRIMARY KEY,
+  balance_micros   INTEGER NOT NULL DEFAULT 0,
+  lifetime_micros  INTEGER NOT NULL DEFAULT 0,
+  paid_micros      INTEGER NOT NULL DEFAULT 0,
+  opted_out        INTEGER NOT NULL DEFAULT 0,
+  created_at       INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS claims (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  token             TEXT NOT NULL REFERENCES tokens(address),
+  handle            TEXT NOT NULL,
+  amount_micros     INTEGER NOT NULL,
+  recipient_micros  INTEGER NOT NULL,
+  burn_micros       INTEGER NOT NULL,
+  tx_hash           TEXT,
+  created_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS claims_handle ON claims(handle);
+CREATE INDEX IF NOT EXISTS claims_token ON claims(token);
+
+CREATE TABLE IF NOT EXISTS payouts (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  handle         TEXT NOT NULL,
+  amount_micros  INTEGER NOT NULL,
+  status         TEXT NOT NULL CHECK (status IN ('queued','paid','failed')),
+  provider_ref   TEXT,
+  created_at     INTEGER NOT NULL,
+  settled_at     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS burns (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  amount_micros  INTEGER NOT NULL,
+  status         TEXT NOT NULL CHECK (status IN ('pending','done')),
+  tx_hash        TEXT,
+  created_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+`;
+
+export type Db = DatabaseSync;
+
+export function openDb(path: string): Db {
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+  const db = new DatabaseSync(path);
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  db.exec(SCHEMA);
+  return db;
+}
+
+export function tx<T>(db: Db, fn: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const out = fn();
+    db.exec("COMMIT");
+    return out;
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+export function getKv(db: Db, key: string): string | null {
+  const row = db.prepare("SELECT value FROM kv WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setKv(db: Db, key: string, value: string) {
+  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+}

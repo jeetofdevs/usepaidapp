@@ -1,0 +1,74 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { openDb } from "../lib/db.ts";
+import { recordClaim, setOptOut, settlePayout, upsertToken } from "../lib/ledger.ts";
+import { getAccount, getStats, listPayouts } from "../lib/queries.ts";
+import { runClaimCycle } from "../lib/claimer.ts";
+import { MockFeeSource } from "../lib/sources/mock.ts";
+import { ManualPayoutProvider } from "../lib/payouts/manual.ts";
+import { DEMO_TOKENS } from "../lib/demo.ts";
+
+const opts = { recipientShareBps: 8000, payoutMilestoneMicros: 10_000_000 };
+const token = { address: "0xABC", chainId: 1, name: "T", symbol: "T", handle: "alice", launchedAt: 0 };
+
+test("claims credit the account and queue a payout at the milestone", () => {
+  const db = openDb(":memory:");
+  upsertToken(db, token);
+
+  assert.equal(recordClaim(db, opts, "0xabc", 5_000_000, null).payoutId, null);
+  assert.equal(getAccount(db, "alice")!.balance_micros, 4_000_000);
+
+  const { payoutId } = recordClaim(db, opts, "0xabc", 10_000_000, "0x1");
+  assert.ok(payoutId);
+  assert.equal(getAccount(db, "alice")!.balance_micros, 0);
+  assert.equal(listPayouts(db, { status: "queued" })[0].amount_micros, 12_000_000);
+
+  settlePayout(db, payoutId!, { ok: true, ref: "r1" });
+  assert.equal(getAccount(db, "alice")!.paid_micros, 12_000_000);
+  assert.throws(() => settlePayout(db, payoutId!, { ok: true, ref: "again" }), /already paid/);
+
+  const s = getStats(db);
+  assert.equal(s.claimedMicros, 15_000_000);
+  assert.equal(s.burnedMicros, 3_000_000);
+  assert.equal(s.paidMicros, 12_000_000);
+});
+
+test("a failed payout returns money to the balance", () => {
+  const db = openDb(":memory:");
+  upsertToken(db, token);
+  const { payoutId } = recordClaim(db, opts, "0xabc", 20_000_000, null);
+  settlePayout(db, payoutId!, { ok: false, reason: "no X Money" });
+  assert.equal(getAccount(db, "alice")!.balance_micros, 16_000_000);
+  assert.equal(getAccount(db, "alice")!.paid_micros, 0);
+});
+
+test("opted-out accounts receive nothing; the whole claim is burned", () => {
+  const db = openDb(":memory:");
+  upsertToken(db, token);
+  setOptOut(db, "alice", true);
+  recordClaim(db, opts, "0xabc", 50_000_000, null);
+  assert.equal(getAccount(db, "alice")!.lifetime_micros, 0);
+  assert.equal(getStats(db).burnedMicros, 50_000_000);
+});
+
+test("claim cycle discovers tokens once and keeps the ledger balanced", async () => {
+  const db = openDb(":memory:");
+  const source = new MockFeeSource(DEMO_TOKENS, 1);
+  const r1 = await runClaimCycle(db, source, new ManualPayoutProvider(), opts);
+  const r2 = await runClaimCycle(db, source, new ManualPayoutProvider(), opts);
+  assert.equal(r1.discovered, DEMO_TOKENS.length);
+  assert.equal(r2.discovered, 0);
+  assert.equal(r1.errors.length + r2.errors.length, 0);
+
+  const row = db
+    .prepare(
+      `SELECT (SELECT SUM(amount_micros) FROM claims) AS claimed,
+              (SELECT SUM(recipient_micros) FROM claims) AS recipient,
+              (SELECT SUM(balance_micros) FROM accounts) AS balances,
+              (SELECT COALESCE(SUM(amount_micros),0) FROM payouts) AS payouts,
+              (SELECT SUM(burn_micros) FROM claims) AS burn`,
+    )
+    .get() as Record<string, number>;
+  assert.equal(row.recipient + row.burn, row.claimed);
+  assert.equal(row.balances + row.payouts, row.recipient);
+});

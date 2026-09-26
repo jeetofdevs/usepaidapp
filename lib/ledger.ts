@@ -1,0 +1,109 @@
+import { type Db, tx } from "./db.ts";
+import { splitClaim } from "./money.ts";
+
+export type TokenRecord = {
+  address: string;
+  chainId: number;
+  name: string;
+  symbol: string;
+  image?: string | null;
+  handle: string;
+  creator?: string | null;
+  launchedAt: number;
+};
+
+export type LedgerOptions = { recipientShareBps: number; payoutMilestoneMicros: number };
+
+export function upsertToken(db: Db, t: TokenRecord) {
+  db.prepare(
+    `INSERT INTO tokens (address, chain_id, name, symbol, image, handle, creator, launched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(address) DO UPDATE SET name = excluded.name, symbol = excluded.symbol,
+       image = excluded.image, handle = excluded.handle`,
+  ).run(t.address.toLowerCase(), t.chainId, t.name, t.symbol, t.image ?? null, t.handle, t.creator ?? null, t.launchedAt);
+  ensureAccount(db, t.handle);
+}
+
+function ensureAccount(db: Db, handle: string) {
+  db.prepare("INSERT OR IGNORE INTO accounts (handle, created_at) VALUES (?, ?)").run(handle, Date.now());
+}
+
+/**
+ * Records fees claimed for a token: splits them between the X account and the burn,
+ * credits the account, and queues a payout once the balance reaches the milestone.
+ * Returns the queued payout id, if any.
+ */
+export function recordClaim(
+  db: Db,
+  opts: LedgerOptions,
+  tokenAddress: string,
+  amountMicros: number,
+  txHash: string | null,
+): { claimId: number; payoutId: number | null } {
+  return tx(db, () => {
+    const token = db.prepare("SELECT handle FROM tokens WHERE address = ?").get(tokenAddress.toLowerCase()) as
+      | { handle: string }
+      | undefined;
+    if (!token) throw new Error(`unknown token ${tokenAddress}`);
+    const account = db.prepare("SELECT opted_out FROM accounts WHERE handle = ?").get(token.handle) as
+      | { opted_out: number }
+      | undefined;
+
+    // An opted-out account never receives funds; its whole share is burned instead.
+    const { recipient, burn } = account?.opted_out
+      ? { recipient: 0, burn: amountMicros }
+      : splitClaim(amountMicros, opts.recipientShareBps);
+    const now = Date.now();
+
+    const claim = db
+      .prepare(
+        `INSERT INTO claims (token, handle, amount_micros, recipient_micros, burn_micros, tx_hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(tokenAddress.toLowerCase(), token.handle, amountMicros, recipient, burn, txHash, now);
+    db.prepare("UPDATE tokens SET fees_micros = fees_micros + ? WHERE address = ?").run(amountMicros, tokenAddress.toLowerCase());
+    db.prepare(
+      "UPDATE accounts SET balance_micros = balance_micros + ?, lifetime_micros = lifetime_micros + ? WHERE handle = ?",
+    ).run(recipient, recipient, token.handle);
+    if (burn > 0) {
+      db.prepare("INSERT INTO burns (amount_micros, status, created_at) VALUES (?, 'pending', ?)").run(burn, now);
+    }
+
+    const payoutId = maybeQueuePayout(db, token.handle, opts.payoutMilestoneMicros);
+    return { claimId: Number(claim.lastInsertRowid), payoutId };
+  });
+}
+
+function maybeQueuePayout(db: Db, handle: string, milestoneMicros: number): number | null {
+  const acc = db.prepare("SELECT balance_micros FROM accounts WHERE handle = ?").get(handle) as { balance_micros: number };
+  if (acc.balance_micros < milestoneMicros || acc.balance_micros <= 0) return null;
+  // Move the whole balance into the payout so it can't be paid twice.
+  db.prepare("UPDATE accounts SET balance_micros = 0 WHERE handle = ?").run(handle);
+  const r = db
+    .prepare("INSERT INTO payouts (handle, amount_micros, status, created_at) VALUES (?, ?, 'queued', ?)")
+    .run(handle, acc.balance_micros, Date.now());
+  return Number(r.lastInsertRowid);
+}
+
+export function settlePayout(db: Db, id: number, result: { ok: true; ref: string } | { ok: false; reason: string }) {
+  tx(db, () => {
+    const p = db.prepare("SELECT handle, amount_micros, status FROM payouts WHERE id = ?").get(id) as
+      | { handle: string; amount_micros: number; status: string }
+      | undefined;
+    if (!p) throw new Error(`unknown payout ${id}`);
+    if (p.status !== "queued") throw new Error(`payout ${id} is already ${p.status}`);
+    if (result.ok) {
+      db.prepare("UPDATE payouts SET status = 'paid', provider_ref = ?, settled_at = ? WHERE id = ?").run(result.ref, Date.now(), id);
+      db.prepare("UPDATE accounts SET paid_micros = paid_micros + ? WHERE handle = ?").run(p.amount_micros, p.handle);
+    } else {
+      // Return the money to the balance so the next milestone retries it.
+      db.prepare("UPDATE payouts SET status = 'failed', provider_ref = ?, settled_at = ? WHERE id = ?").run(result.reason, Date.now(), id);
+      db.prepare("UPDATE accounts SET balance_micros = balance_micros + ? WHERE handle = ?").run(p.amount_micros, p.handle);
+    }
+  });
+}
+
+export function setOptOut(db: Db, handle: string, optedOut: boolean) {
+  ensureAccount(db, handle);
+  db.prepare("UPDATE accounts SET opted_out = ? WHERE handle = ?").run(optedOut ? 1 : 0, handle);
+}
